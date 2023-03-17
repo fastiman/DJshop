@@ -3,6 +3,7 @@ from django.db import models
 from django.shortcuts import reverse
 
 CATEGORY = (('S', 'Shirt'), ('SP', 'Sport Wear'), ('OW', 'Out Wear'))
+
 LABEL = (('N', 'New'), ('BS', 'Best Seller'))
 
 
