@@ -7,7 +7,8 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.views.generic import ListView, DetailView, View
 
-from .models import Item, OrderItem, Order
+from .forms import CheckoutForm
+from .models import Item, OrderItem, Order, CheckoutAddress
 
 
 class HomeView(ListView):
@@ -34,6 +35,41 @@ class OrderSummaryView(LoginRequiredMixin, View):
             return redirect("/")
 
 
+class CheckoutView(View):
+    def get(self, *args, **kwargs):
+        form = CheckoutForm()
+        context = {'form': form}
+        return render(self.request, 'checkout.html', context)
+
+    def post(self, *args, **kwargs):
+        form = CheckoutForm(self.request.POST or None)
+
+        try:
+            order = Order.objects.get(user=self.request.user, ordered=False)
+            if form.is_valid():
+                street_address = form.cleaned_data.get('street_address')
+                apartment_address = form.cleaned_data.get('apartment_address')
+                country = form.cleaned_data.get('country')
+                zip = form.cleaned_data.get('zip')
+                same_billing_address = form.cleaned_data.get('same_billing_address')
+                save_info = form.cleaned_data.get('save_info')
+                payment_option = form.cleaned_data.get('payment_option')
+
+                checkout_address = CheckoutAddress(user=self.request.user,
+                    street_address=street_address, apartment_address=apartment_address,
+                    country=country, zip=zip)
+                checkout_address.save()
+                order.checkout_address = checkout_address
+                order.save()
+                return redirect('core:checkout')
+            messages.warning(self.request, "Failed Chekout")
+            return redirect('core:checkout')
+
+        except ObjectDoesNotExist:
+            messages.error(self.request, "You do not have an order")
+            return redirect("core:order-summary")
+
+
 @login_required
 def add_to_cart(request, pk):
     item = get_object_or_404(Item, pk=pk)
@@ -51,17 +87,18 @@ def add_to_cart(request, pk):
             order_item.quantity += 1
             order_item.save()
             messages.info(request, "Added quantity Item")
-            return redirect("core:product", pk=pk)
+            return redirect("core:order-summary")
         else:
             order.items.add(order_item)
             messages.info(request, "Item added to your cart")
-            return redirect("core:product", pk=pk)
+            return redirect("core:order-summary")
     else:
         ordered_date = timezone.now()
         order = Order.objects.create(user=request.user, ordered_date=ordered_date)
         order.items.add(order_item)
+        order_item.save()
         messages.info(request, "Item added to your cart")
-        return redirect("core:order-summary", pk=pk)
+        return redirect("core:order-summary")
 
 
 @login_required
@@ -80,8 +117,9 @@ def remove_from_cart(request, pk):
                 ordered=False
             )[0]
             order.items.remove(order_item)
+            order_item.save()
             messages.info(request, "Item \""+order_item.item.item_name+"\" remove from your cart")
-            return redirect("core:order-summary", pk=pk)
+            return redirect("core:order-summary")
         else:
             messages.info(request, "This Item not in your cart")
             return redirect("core:product", pk=pk)
